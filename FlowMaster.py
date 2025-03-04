@@ -205,10 +205,10 @@ ROUTING_PORT = (
 MONITORING_PORT = 8081  # Port for the monitoring dashboard to view server statistics
 SOCKET_TIMEOUT = 5  # Socket timeout in seconds to prevent hanging connections
 FILE_PATHS = [  # Paths to HTML files served by different servers
-    r"C:\Users\user\PycharmProjects\Bruh\Project\index1.html",  # Server on port 8000
-    r"C:\Users\user\PycharmProjects\Bruh\Project\index2.html",  # Server on port 8001
-    r"C:\Users\user\PycharmProjects\Bruh\Project\index3.html",  # Server on port 8002
-    r"C:\Users\user\PycharmProjects\Bruh\Project\tracker.html",  # Monitoring dashboard
+    "html/index1.html",  # Server on port 8000
+    "html/index2.html",  # Server on port 8001
+    "html/index3.html",  # Server on port 8002
+    "html/tracker.html",  # Monitoring dashboard
 ]
 
 HEARTBEAT_INTERVAL = (
