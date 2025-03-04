@@ -1,3 +1,4 @@
+#!env/python3
 # Short explanation of everything up until 03/03/2025, please remember to update this Tal...
 
 
@@ -215,19 +216,27 @@ HEARTBEAT_INTERVAL = (
     2.5  # Time between heartbeat checks to verify client connections (in seconds)
 )
 TIMEOUT_THRESHOLD = 10  # Time after which a client is considered inactive (in seconds)
-DELAY_BETWEEN_ROUTING = 0.35  # Small delay between routing requests to prevent overwhelming servers (in seconds)
+
+# A small delay between routing requests to prevent overwhelming servers (in seconds)
+DELAY_BETWEEN_ROUTING = 0.35
 
 # SHARED STATE AND SYNCHRONIZATION
 
 active_users = {
     port: {} for port in PORTS + [MONITORING_PORT]
 }  # Dictionary tracking active users per port, with format: {port: {client_id: last_active_time}}
+denied_users = {
+    port: {} for port in PORTS + [MONITORING_PORT]
+}  # Dictionary tracking users we want to deny access (i.e. disconnect them), with format: {port: {client_id}}
+
 users_lock = (
     threading.Lock()
 )  # Lock to protect the active_users dictionary during concurrent access
+
 connected_clients = (
     set()
 )  # Set of unique client identifiers that have connected at least once
+
 clients_lock = (
     threading.Lock()
 )  # Lock to protect the connected_clients set during concurrent access
@@ -256,7 +265,7 @@ def test_ports():
                 test_socket.bind((IP, port))
                 # If binding succeeds, the port is available
             except socket.error:
-                logging.error(f"Port {port} is not available!")
+                logging.error("Port %d is not available!", port)
                 return False
     return True
 
@@ -299,7 +308,7 @@ def update_active_users():
             # Log current active user counts for monitoring
             logging.info("--- Current Active Users ---")
             for port in PORTS:
-                logging.info(f"Port {port}: {len(active_users[port])} active users")
+                logging.info("Port %d: %d active users", port, len(active_users[port]))
 
 
 def get_server_loads():
@@ -343,7 +352,7 @@ def select_target_port():
         int: The selected port number for the new connection.
     """
     loads = get_server_loads()
-    logging.info(f"Current server loads: {loads}")
+    logging.info("Current server loads: %s", json.dumps(loads))
 
     min_load = min(loads.values())  # Find the minimum load across all servers
 
@@ -355,7 +364,7 @@ def select_target_port():
     # This provides consistent behavior when multiple servers have the same load
     selected_port = min(min_load_ports)
 
-    logging.info(f"Selected port {selected_port} with load {min_load}")
+    logging.info("Selected port %d with load %d", selected_port, min_load)
     return selected_port
 
 
@@ -373,7 +382,7 @@ def send_redirect(client_socket, port):
     ).encode()
 
     client_socket.sendall(redirect_response)
-    logging.info(f"Sent redirect to port {port}")
+    logging.info("Sent redirect to port %d", port)
 
 
 def send_file(file_path, client_socket):
@@ -394,11 +403,11 @@ def send_file(file_path, client_socket):
             b"\r\n" + content
         )
         client_socket.sendall(response)
-        logging.info(f"Sent file: {file_path}")
+        logging.info("Sent file: %s", file_path)
 
     except FileNotFoundError:
         logging.warning(
-            f"File not found: {file_path}"
+            "File not found: %s", file_path
         )  # Handle case where file doesn't exist
         client_socket.sendall(
             b"HTTP/1.1 404 Not Found\r\n"
@@ -406,7 +415,7 @@ def send_file(file_path, client_socket):
             b"\r\nFile not found."
         )
     except Exception as e:
-        logging.error(f"Error sending file: {e}")  # Handle any other errors
+        logging.error("Error sending file: %s", str(e))  # Handle any other errors
         client_socket.sendall(
             b"HTTP/1.1 500 Internal Server Error\r\n"
             b"Content-Type: text/plain\r\n"
@@ -450,19 +459,29 @@ def handle_request(client_socket, file_path, port):
     """
     try:
         data = client_socket.recv(9999).decode()  # Read data from client (HTTP request)
-        logging.debug(f"Received data on port {port}:\n{data}")
+        logging.debug("Received data on port %d\n%s", port, str(data))
 
         if client_socket.fileno() == -1:  # Check if socket is still valid
-            logging.error(f"Socket already closed on port {port}")
+            logging.error("Socket already closed on port %d", port)
             return False
 
         client_address = client_socket.getpeername()[
             0
         ]  # Identify the client - either by client_id parameter or IP address
+
         client_id = None
         if "client_id=" in data:
             client_id = data.split("client_id=")[1].split(" ")[0]
+
         identifier = client_id if client_id else client_address
+
+        if identifier in denied_users[port]:
+            # If user has been denied access, ignore him
+            logging.info("^ Detected blocked access from %s ^", identifier)
+            msg = "Access has been denied"
+            response = f"HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\n{msg}".encode()
+            client_socket.sendall(response)
+            return True
 
         with clients_lock:  # Track if this is a new or continuing connection
             if identifier not in connected_clients:
@@ -471,15 +490,15 @@ def handle_request(client_socket, file_path, port):
             else:
                 connection_type = "continuing"
 
-        logging.info(f"^ Detected {connection_type} connection from {identifier} ^")
+        logging.info("^ Detected %s connection from %s ^", connection_type, identifier)
 
         if port == MONITORING_PORT:  # Handle monitoring server requests
             if "/stats" in data:
                 handle_stats_request(client_socket)
                 return True
-            else:
-                send_file(file_path, client_socket)
-                return True
+
+            send_file(file_path, client_socket)
+            return True
 
         if "/heartbeat" in data:  # Handle heartbeat requests (keep-alive signals)
             with users_lock:
@@ -499,37 +518,51 @@ def handle_request(client_socket, file_path, port):
             client_socket.sendall(b"\r\n".join(headers))
             return True
 
-        if "/leave" in data:  # Handle client disconnection requests
+        if "/leave" in data:  # Handle client leave requests
             with users_lock:
                 if identifier in active_users[port]:
                     del active_users[port][identifier]
+
+            client_socket.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+            return True
+        
+        if "/disconnect" in data:  # Handle client leave requests
+            with users_lock:
+                if client_id in active_users[port]:
+                    del active_users[port][client_id]
+                
+                denied_users[port][client_id] = True
+
             client_socket.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
             return True
 
         if port == ROUTING_PORT:  # Handle routing server (load balancer) requests
             selected_port = select_target_port()
             send_redirect(client_socket, selected_port)
-        else:  # Handle content server requests
-            with users_lock:
-                active_users[port][identifier] = datetime.now()
-            send_file(file_path, client_socket)
+            return True
+
+        # Handle content server requests
+        with users_lock:
+            active_users[port][identifier] = datetime.now()
+
+        send_file(file_path, client_socket)
 
         return True
 
     except socket.timeout:
         logging.warning(
-            f"Socket timeout occurred on port {port}"
+            "Socket timeout occurred on port %d", port
         )  # Handle timeout error
     except Exception as e:
         logging.error(
-            f"An error occurred on port {port}: {e}"
+            "An error occurred on port %d: %s", port, str(e)
         )  # Handle any other errors
     finally:
         try:  # Always ensure the socket is closed
             # noinspection PyArgumentList
             client_socket.close()  # the comment above is to stop pep8 from being mad
         except Exception as e:
-            logging.error(f"Error closing socket on port {port}: {e}")
+            logging.error("Error closing socket on port %d: %s", port, str(e))
     return False
 
 
@@ -541,12 +574,12 @@ def monitoring_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.bind((IP, MONITORING_PORT))
         server_socket.listen()
-        logging.info(f"Monitoring server listening on: {IP}:{MONITORING_PORT}")
+        logging.info("Monitoring server listening on: %s:%d", IP, MONITORING_PORT)
 
         while True:
             (
                 client_socket,
-                client_address,
+                _,
             ) = server_socket.accept()  # Accept incoming connections
             client_socket.settimeout(SOCKET_TIMEOUT)
 
@@ -566,14 +599,14 @@ def start_routing_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as routing_socket:
         routing_socket.bind((IP, ROUTING_PORT))
         routing_socket.listen()
-        logging.info(f"Routing server listening on: {IP}:{ROUTING_PORT}")
+        logging.info("Routing server listening on: %s:%d", IP, ROUTING_PORT)
 
         last_routing_time = time.time()
 
         while True:
             (
                 client_socket,
-                client_address,
+                _,
             ) = routing_socket.accept()  # Accept incoming connections
             client_socket.settimeout(SOCKET_TIMEOUT)
 
@@ -603,12 +636,12 @@ def static_server(port, file_path):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.bind((IP, port))
         server_socket.listen()
-        logging.info(f"Static server listening on: {IP}:{port}")
+        logging.info("Static server listening on: %s:%d", IP, port)
 
         while True:
             (
                 client_socket,
-                client_address,
+                _,
             ) = server_socket.accept()  # Accept incoming connections
             client_socket.settimeout(SOCKET_TIMEOUT)
 
@@ -641,10 +674,10 @@ def main():
         sys.exit(1)
 
     # Log access information
-    logging.info(f"Server accessible at: http://{IP}:{ROUTING_PORT}")
-    logging.info(f"Monitoring interface at: http://{IP}:{MONITORING_PORT}")
+    logging.info("Server accessible at: http://%s:%d", IP, ROUTING_PORT)
+    logging.info("Monitoring interface at: http://%s:%d", IP, MONITORING_PORT)
     logging.info(
-        f"Direct access ports: {', '.join(f'http://{IP}:{port}' for port in PORTS)}"
+        "Direct access ports: %s", ", ".join(f"http://{IP}:{port}" for port in PORTS)
     )
 
     # Set up signal handler for graceful shutdown
