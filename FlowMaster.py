@@ -568,15 +568,12 @@ def handle_request(client_socket, file_path, port):
                 ] = datetime.now()  # Update last active time for this client
                 active_count = len(active_users[port])
 
-            headers = [  # Send minimal response with active user count in header
-                b"HTTP/1.1 200 OK",
-                b"Content-Type: text/plain",
-                f"X-Active-Users: {active_count}".encode(),
-                b"Content-Length: 0",
-                b"",
-                b"",
-            ]
-            client_socket.sendall(b"\r\n".join(headers))
+            # Send minimal response with active user count in header
+            msg = ("HTTP/1.1 200 OK\r\nContent-Type: text/plain"
+                    f"X-Active-Users: {active_count}\r\n"
+                    "Content-Length: 0\r\n\r\n").encode()
+
+            client_socket.sendall(msg)
             return True
 
         if "/leave" in data:  # Handle client leave requests
