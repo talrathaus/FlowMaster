@@ -60,6 +60,12 @@
                         window.location.href = redirectUrl;
                         return;
                     }
+
+                    // Update user count from response header
+                    const activeCount = response.headers.get('X-Active-Users');
+                    if (activeCount) {
+                        document.getElementById('activeUsers').textContent = activeCount;
+                    }
                 }
             } catch (error) {
                 console.error('Heartbeat error:', error);
