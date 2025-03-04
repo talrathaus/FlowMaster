@@ -197,7 +197,7 @@ SERVICE_USERS = True
 # IP = socket.gethostbyname(
 #     socket.gethostname()
 # )  # Get the local machine's IP address automatically
-IP = '0.0.0.0'
+IP = "0.0.0.0"
 
 PORTS = [
     8000,
@@ -471,7 +471,7 @@ def handle_stats_request(client_socket):
     logging.info("Sent monitoring stats")
 
 
-def handle_request(client_socket, file_path, port):
+def handle_user_request(client_socket, file_path, port):
     """
     Handle incoming HTTP requests based on the server type and request path.
     This function decodes the request, identifies the client, updates activity tracking,
@@ -495,19 +495,13 @@ def handle_request(client_socket, file_path, port):
             logging.error("Socket already closed on port %d", port)
             return False
 
-        client_address = client_socket.getpeername()[
-            0
-        ]  # Identify the client - either by client_id parameter or IP address
-
         client_id = None
         if "client_id=" in data:
             client_id = data.split("client_id=")[1].split(" ")[0]
 
-        identifier = client_id if client_id else client_address
-
-        if identifier in denied_users:
+        if client_id is not None and client_id in denied_users:
             # If user has been denied access, ignore him
-            logging.info("^ Detected blocked access from %s (%d)^", identifier, port)
+            logging.info("^ Detected blocked access from %s (%d)^", client_id, port)
             msg = "Access has been denied"
             response = (
                 f"HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\n{msg}".encode()
@@ -515,76 +509,44 @@ def handle_request(client_socket, file_path, port):
             client_socket.sendall(response)
             return True
 
-        with clients_lock:  # Track if this is a new or continuing connection
-            if identifier not in connected_clients:
-                connection_type = "new"
-                connected_clients.add(identifier)
-            else:
-                connection_type = "continuing"
+        connection_type = "new"
+        if client_id is not None:
+            with clients_lock:  # Track if this is a new or continuing connection
+                if client_id not in connected_clients:
+                    connected_clients.add(client_id)
+                else:
+                    connection_type = "returning"
 
-        logging.info("^ Detected %s connection from %s on port %d ^", connection_type, identifier, port)
+        logging.info(
+            "^ Detected '%s' connection from %s on port %d ^",
+            connection_type,
+            client_id,
+            port,
+        )
 
-        if port == MONITORING_PORT:  # Handle monitoring server requests
-            if "/stats" in data:
-                handle_stats_request(client_socket)
-                return True
-
-            if "/disconnect" in data:  # Handle client leave requests
-                # Find the body inside the 'data'
-                header_and_body = data.split("\r\n\r\n")
-
-                user_id = None
-                if len(header_and_body) > 1:
-                    body = header_and_body[1]
-
-                    # Parse the body - it comes as json
-                    body_json = json.loads(body)
-
-                    if "userId" in body_json:
-                        user_id = body_json["userId"]
-
-                if user_id is None:
-                    msg = "{'response': 'disconnect failed'}"
-                    client_socket.sendall(
-                        f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
-                    )
-                    return True
-
-                with users_lock:
-                    for check_port in PORTS + [MONITORING_PORT]:
-                        if user_id in active_users[check_port]:
-                            del active_users[check_port][user_id]
-
-                    denied_users[user_id] = True
-
-                msg = "{'response': 'disconnect received'}"
-                client_socket.sendall(
-                    f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
-                )
-                return True
-
-            send_file(file_path, client_socket)
-            return True
-
-        if "/heartbeat" in data:  # Handle heartbeat requests (keep-alive signals)
+        if (
+            client_id is not None and "/heartbeat" in data
+        ):  # Handle heartbeat requests (keep-alive signals)
             with users_lock:
                 active_users[port][
-                    identifier
+                    client_id
                 ] = datetime.now()  # Update last active time for this client
                 active_count = len(active_users[port])
 
             # Send minimal response with active user count in header
-            msg = ("HTTP/1.1 200 OK\r\nContent-Type: text/plain"
-                    f"X-Active-Users: {active_count}\r\n"
-                    "Content-Length: 0\r\n\r\n").encode()
+            msg = (
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"
+                f"X-Active-Users: {active_count}\r\n"
+                "Content-Length: 0\r\n\r\n"
+            ).encode()
 
             client_socket.sendall(msg)
             return True
 
-        if "/leave" in data:  # Handle client leave requests
+        if client_id is not None and "/leave" in data:  # Handle client leave requests
             with users_lock:
-                if identifier in active_users[port]:
-                    del active_users[port][identifier]
+                if client_id in active_users[port]:
+                    del active_users[port][client_id]
 
             msg = "{'response': 'leave received'}"
             client_socket.sendall(
@@ -598,11 +560,84 @@ def handle_request(client_socket, file_path, port):
             return True
 
         # Handle content server requests
-        with users_lock:
-            active_users[port][identifier] = datetime.now()
+        if client_id is not None:
+            with users_lock:
+                active_users[port][client_id] = datetime.now()
 
         send_file(file_path, client_socket)
 
+        return True
+
+    except socket.timeout:
+        logging.warning(
+            "Socket timeout occurred on port %d", port
+        )  # Handle timeout error
+    except Exception as e:
+        logging.error(
+            "An error occurred on port %d: %s", port, str(e)
+        )  # Handle any other errors
+    finally:
+        try:  # Always ensure the socket is closed
+            # noinspection PyArgumentList
+            client_socket.close()  # the comment above is to stop pep8 from being mad
+        except Exception as e:
+            logging.error("Error closing socket on port %d: %s", port, str(e))
+    return False
+
+
+def handle_monitor_request(client_socket, file_path, port):
+    """ """
+    try:
+        if not SERVICE_USERS or not MONITOR_SERVER:
+            # Stop the thread
+            sys.exit()
+
+        data = client_socket.recv(9999).decode()  # Read data from client (HTTP request)
+        logging.debug("Received data on port %d\n%s", port, str(data))
+
+        if client_socket.fileno() == -1:  # Check if socket is still valid
+            logging.error("Socket already closed on port %d", port)
+            return False
+
+        if "/stats" in data:
+            handle_stats_request(client_socket)
+            return True
+
+        if "/disconnect" in data:  # Handle client leave requests
+            # Find the body inside the 'data'
+            header_and_body = data.split("\r\n\r\n")
+
+            user_id = None
+            if len(header_and_body) > 1:
+                body = header_and_body[1]
+
+                # Parse the body - it comes as json
+                body_json = json.loads(body)
+
+                if "userId" in body_json:
+                    user_id = body_json["userId"]
+
+            if user_id is None:
+                msg = "{'response': 'disconnect failed'}"
+                client_socket.sendall(
+                    f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
+                )
+                return True
+
+            with users_lock:
+                for check_port in PORTS + [MONITORING_PORT]:
+                    if user_id in active_users[check_port]:
+                        del active_users[check_port][user_id]
+
+                denied_users[user_id] = True
+
+            msg = "{'response': 'disconnect received'}"
+            client_socket.sendall(
+                f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
+            )
+            return True
+
+        send_file(file_path, client_socket)
         return True
 
     except socket.timeout:
@@ -643,7 +678,7 @@ def monitoring_server():
             client_sockets[client_peername] = client_socket
 
             threading.Thread(  # Handle each request in a separate thread
-                target=lambda: handle_request(
+                target=lambda: handle_monitor_request(
                     client_socket, FILE_PATHS[3], MONITORING_PORT
                 )
             ).start()
@@ -680,7 +715,7 @@ def start_routing_server():
             last_routing_time = time.time()  # Update last routing time
 
             threading.Thread(  # Handle each routing request in a separate thread
-                target=lambda: handle_request(client_socket, None, ROUTING_PORT)
+                target=lambda: handle_user_request(client_socket, None, ROUTING_PORT)
             ).start()
 
 
@@ -702,10 +737,11 @@ def static_server(port, file_path):
                 client_socket,
                 _,
             ) = server_socket.accept()  # Accept incoming connections
+
             client_socket.settimeout(SOCKET_TIMEOUT)
 
             threading.Thread(  # Handle each request in a separate thread
-                target=lambda: handle_request(client_socket, file_path, port)
+                target=lambda: handle_user_request(client_socket, file_path, port)
             ).start()
 
 
