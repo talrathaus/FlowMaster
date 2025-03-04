@@ -194,19 +194,24 @@ import json
 MONITOR_SERVER = True
 SERVICE_USERS = True
 
-IP = socket.gethostbyname(
-    socket.gethostname()
-)  # Get the local machine's IP address automatically
+# IP = socket.gethostbyname(
+#     socket.gethostname()
+# )  # Get the local machine's IP address automatically
+IP = '0.0.0.0'
+
 PORTS = [
     8000,
     8001,
     8002,
 ]  # Ports for content servers that will host the actual web pages
+
 ROUTING_PORT = (
     8080  # Port for the load balancer that will redirect users to the least busy server
 )
+
 MONITORING_PORT = 8081  # Port for the monitoring dashboard to view server statistics
 SOCKET_TIMEOUT = 5  # Socket timeout in seconds to prevent hanging connections
+
 FILE_PATHS = [  # Paths to HTML files served by different servers
     "html/index1.html",  # Server on port 8000
     "html/index2.html",  # Server on port 8001
@@ -502,7 +507,7 @@ def handle_request(client_socket, file_path, port):
 
         if identifier in denied_users:
             # If user has been denied access, ignore him
-            logging.info("^ Detected blocked access from %s ^", identifier)
+            logging.info("^ Detected blocked access from %s (%d)^", identifier, port)
             msg = "Access has been denied"
             response = (
                 f"HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\n{msg}".encode()
@@ -517,7 +522,7 @@ def handle_request(client_socket, file_path, port):
             else:
                 connection_type = "continuing"
 
-        logging.info("^ Detected %s connection from %s ^", connection_type, identifier)
+        logging.info("^ Detected %s connection from %s on port %d ^", connection_type, identifier, port)
 
         if port == MONITORING_PORT:  # Handle monitoring server requests
             if "/stats" in data:
