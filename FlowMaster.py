@@ -191,6 +191,8 @@ import logging
 import json
 
 # CONFIGURATION CONSTANTS
+MONITOR_SERVER = True
+SERVICE_USERS = True
 
 IP = socket.gethostbyname(
     socket.gethostname()
@@ -225,13 +227,15 @@ DELAY_BETWEEN_ROUTING = 0.35
 active_users = {
     port: {} for port in PORTS + [MONITORING_PORT]
 }  # Dictionary tracking active users per port, with format: {port: {client_id: last_active_time}}
-denied_users = {
-    port: {} for port in PORTS + [MONITORING_PORT]
-}  # Dictionary tracking users we want to deny access (i.e. disconnect them), with format: {port: {client_id}}
+denied_users = (
+    {}
+)  # Dictionary tracking users we want to deny access (i.e. disconnect them), with format: {client_id}
 
 users_lock = (
     threading.Lock()
 )  # Lock to protect the active_users dictionary during concurrent access
+
+client_sockets = {}
 
 connected_clients = (
     set()
@@ -277,6 +281,23 @@ def signal_handler(*_):
     Args:
         *_: Ignored signal parameters.
     """
+    global MONITOR_SERVER, SERVICE_USERS, client_sockets
+
+    logging.info("Shutting down server - waiting for 1 second")
+
+    MONITOR_SERVER = False
+    SERVICE_USERS = False
+
+    for _, peername in client_sockets.items():
+        try:
+            # Drop the connection so that we can exit gracefully
+            peername.shutdown()
+        except:
+            # We don't care about failed shutdown
+            pass
+
+    time.sleep(1)
+
     sys.exit(0)
 
 
@@ -286,7 +307,7 @@ def update_active_users():
     Periodically checks for and removes inactive users based on
     their last activity timestamp. Runs continuously in a separate thread.
     """
-    while True:
+    while SERVICE_USERS:
         time.sleep(HEARTBEAT_INTERVAL)  # Wait between checks
         current_time = datetime.now()
 
@@ -458,6 +479,10 @@ def handle_request(client_socket, file_path, port):
         bool: True if request was handled successfully, False otherwise.
     """
     try:
+        if not SERVICE_USERS or not MONITOR_SERVER:
+            # Stop the thread
+            sys.exit()
+
         data = client_socket.recv(9999).decode()  # Read data from client (HTTP request)
         logging.debug("Received data on port %d\n%s", port, str(data))
 
@@ -475,11 +500,13 @@ def handle_request(client_socket, file_path, port):
 
         identifier = client_id if client_id else client_address
 
-        if identifier in denied_users[port]:
+        if identifier in denied_users:
             # If user has been denied access, ignore him
             logging.info("^ Detected blocked access from %s ^", identifier)
             msg = "Access has been denied"
-            response = f"HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\n{msg}".encode()
+            response = (
+                f"HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\n{msg}".encode()
+            )
             client_socket.sendall(response)
             return True
 
@@ -495,6 +522,40 @@ def handle_request(client_socket, file_path, port):
         if port == MONITORING_PORT:  # Handle monitoring server requests
             if "/stats" in data:
                 handle_stats_request(client_socket)
+                return True
+
+            if "/disconnect" in data:  # Handle client leave requests
+                # Find the body inside the 'data'
+                header_and_body = data.split("\r\n\r\n")
+
+                user_id = None
+                if len(header_and_body) > 1:
+                    body = header_and_body[1]
+
+                    # Parse the body - it comes as json
+                    body_json = json.loads(body)
+
+                    if "userId" in body_json:
+                        user_id = body_json["userId"]
+
+                if user_id is None:
+                    msg = "{'response': 'disconnect failed'}"
+                    client_socket.sendall(
+                        f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
+                    )
+                    return True
+
+                with users_lock:
+                    for check_port in PORTS + [MONITORING_PORT]:
+                        if user_id in active_users[check_port]:
+                            del active_users[check_port][user_id]
+
+                    denied_users[user_id] = True
+
+                msg = "{'response': 'disconnect received'}"
+                client_socket.sendall(
+                    f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
+                )
                 return True
 
             send_file(file_path, client_socket)
@@ -523,17 +584,10 @@ def handle_request(client_socket, file_path, port):
                 if identifier in active_users[port]:
                     del active_users[port][identifier]
 
-            client_socket.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
-            return True
-        
-        if "/disconnect" in data:  # Handle client leave requests
-            with users_lock:
-                if client_id in active_users[port]:
-                    del active_users[port][client_id]
-                
-                denied_users[port][client_id] = True
-
-            client_socket.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+            msg = "{'response': 'leave received'}"
+            client_socket.sendall(
+                f"HTTP/1.1 200 OK\r\nContent-Length: {len(msg)}\r\n\r\n{msg}".encode()
+            )
             return True
 
         if port == ROUTING_PORT:  # Handle routing server (load balancer) requests
@@ -576,12 +630,15 @@ def monitoring_server():
         server_socket.listen()
         logging.info("Monitoring server listening on: %s:%d", IP, MONITORING_PORT)
 
-        while True:
+        while MONITOR_SERVER:
             (
                 client_socket,
                 _,
             ) = server_socket.accept()  # Accept incoming connections
+
             client_socket.settimeout(SOCKET_TIMEOUT)
+            client_peername = f"{client_socket.getpeername()}"
+            client_sockets[client_peername] = client_socket
 
             threading.Thread(  # Handle each request in a separate thread
                 target=lambda: handle_request(
@@ -638,7 +695,7 @@ def static_server(port, file_path):
         server_socket.listen()
         logging.info("Static server listening on: %s:%d", IP, port)
 
-        while True:
+        while MONITOR_SERVER:
             (
                 client_socket,
                 _,
