@@ -473,7 +473,7 @@ def handle_stats_request(client_socket):
 
 def handle_user_request(client_socket, file_path, port):
     """
-    Handle incoming HTTP requests based on the server type and request path.
+    Handle incoming user HTTP requests based on the server type and request path.
     This function decodes the request, identifies the client, updates activity tracking,
     and routes the request to the appropriate handler function.
     Args:
@@ -586,7 +586,16 @@ def handle_user_request(client_socket, file_path, port):
 
 
 def handle_monitor_request(client_socket, file_path, port):
-    """ """
+    """ Handle incoming monitor HTTP requests based on the server type and request path.
+    This function decodes the request, identifies the client, updates activity tracking,
+    and routes the request to the appropriate handler function.
+    Args:
+        client_socket (socket): The client's socket connection.
+        file_path (str): Path to the file to serve (if applicable).
+        port (int): The port number this request was received on.
+    Returns:
+        bool: True if request was handled successfully, False otherwise.
+        """
     try:
         if not SERVICE_USERS or not MONITOR_SERVER:
             # Stop the thread
