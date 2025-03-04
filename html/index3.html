@@ -1,6 +1,7 @@
 <!-- index3.html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Server Stats - Port 8002</title>
@@ -11,6 +12,7 @@
             background-color: #f0f0f0;
             border-radius: 5px;
         }
+
         /* Add styling for the client ID display */
         .client-id {
             background-color: #e0e0e0;
@@ -21,6 +23,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- Add client ID display at the top -->
     <div class="client-id">
@@ -30,7 +33,9 @@
     <h1>Welcome to Tal 3</h1>
 
     <div id="serverInfo">
-        <p>Running on IP: <script>document.write(window.location.hostname)</script></p>
+        <p>Running on IP:
+            <script>document.write(window.location.hostname)</script>
+        </p>
         <p>Port: 8002</p>
     </div>
 
@@ -56,7 +61,7 @@
                         return;
                     }
                 }
-             } catch (error) {
+            } catch (error) {
                 console.error('Heartbeat error:', error);
             }
         }
@@ -69,4 +74,5 @@
         });
     </script>
 </body>
+
 </html>
