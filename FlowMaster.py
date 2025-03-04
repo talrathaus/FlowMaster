@@ -2,10 +2,11 @@
 
 
 """
-Overview: This is a multithreaded server that handles multiple client requests at once. It serves HTML files from
-different ports and directs clients to the right server based on current load. It also keeps track of active users
-and removes inactive ones. Additionally, it introduces a monitoring server to track real-time user activity and
-server load, and implements a delay mechanism for routing to ensure balanced load distribution.
+Overview: This is a multithreaded server that handles multiple client requests at once. It serves
+HTML files from different ports and directs clients to the right server based on current load. It
+also keeps track of active users and removes inactive ones. Additionally, it introduces a monitoring
+server to track real-time user activity and server load, and implements a delay mechanism for
+routing to ensure balanced load distribution.
 
 Technical Architecture:
 - Uses TCP sockets for reliable client-server communication
@@ -287,7 +288,8 @@ def update_active_users():
                 inactive_users = [
                     client_id
                     for client_id, last_active in active_users[port].items()
-                    if (current_time - last_active) > timedelta(seconds=TIMEOUT_THRESHOLD)
+                    if (current_time - last_active)
+                    > timedelta(seconds=TIMEOUT_THRESHOLD)
                 ]
 
                 # Remove inactive users
@@ -386,10 +388,10 @@ def send_file(file_path, client_socket):
             content = file.read()
 
         response = (  # Construct HTTP response with headers and content
-                b"HTTP/1.1 200 OK\r\n"
-                b"Content-Type: text/html\r\n"
-                b"Content-Length: " + str(len(content)).encode() + b"\r\n"
-                                                                   b"\r\n" + content
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/html\r\n"
+            b"Content-Length: " + str(len(content)).encode() + b"\r\n"
+            b"\r\n" + content
         )
         client_socket.sendall(response)
         logging.info(f"Sent file: {file_path}")
