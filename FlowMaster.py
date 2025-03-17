@@ -7,11 +7,14 @@ from datetime import datetime, timedelta
 import logging
 import json
 import uuid
+import sqlite3
 
 # CONFIGURATION CONSTANTS
 MONITOR_SERVER = True
 SERVICE_USERS = True
-IP = socket.gethostbyname(socket.gethostname())  # Get the local machine's IP address automatically
+IP = socket.gethostbyname(
+    socket.gethostname()
+)  # Get the local machine's IP address automatically
 
 PORTS = [
     8000,
@@ -32,12 +35,8 @@ FILE_PATHS = [  # Paths to HTML files served by different servers
     "html/index3.html",  # Server on port 8002
     "html/tracker.html",  # Monitoring dashboard
     "html/login.html",  # Login page
+    "PUP.db",  # Database of the ProjectUserPasswords
 ]
-
-USERNAMES = {
-    "Tal": "Test",  # TO IMPLEMENT GUEST PERMISSIONS
-    "Admin": "Administrator"  # TO IMPLEMENT ADMIN PERMISSIONS
-}  # Allowed usernames for logins
 
 authenticated_sessions = {}
 # Add a dictionary to track authenticated sessions
@@ -104,6 +103,53 @@ def test_ports():
     return True
 
 
+def parse_user_db(db_file_path):
+    """
+    Parse a SQLite database file containing user credentials and permissions
+    and return a dictionary in the format {USERNAME: [PASSWORD, PERMISSION]}
+    Args:
+        db_file_path (str): Path to the SQLite database file
+    Returns:
+        dict: Dictionary with username as key and a list of [password, permission] as value
+    """
+    # Initialize the result dictionary
+    user_library = {}
+
+    try:
+        # Connect to the SQLite database
+        conn = sqlite3.connect(db_file_path)
+        cursor = conn.cursor()
+
+        # Query all user records from the UserPassPerm table
+        cursor.execute("SELECT Username, Password, Perm FROM UserPassPerm")
+        rows = cursor.fetchall()
+
+        # Process each row and add to the dictionary
+        for row in rows:
+            username = row[0]
+            password = row[1]
+            permission = row[2]
+
+            # Add to the dictionary with the required format
+            user_library[username] = [password, permission]
+
+        # Close the connection
+        conn.close()
+
+        return user_library
+
+    except sqlite3.Error as e:
+        print(f"SQLite error: {e}")
+        return {}
+    except Exception as e:
+        print(f"Error: {e}")
+        return {}
+
+
+USERNAMES = parse_user_db(FILE_PATHS[5])  # Allowed usernames for logins
+#  Python no like when is before function
+
+
 def signal_handler(*_):
     """
     Handle graceful shutdown on SIGINT (Ctrl+C).
@@ -148,7 +194,8 @@ def update_active_users():
                 inactive_users = [
                     client_id
                     for client_id, last_active in active_users[port].items()
-                    if (current_time - last_active) > timedelta(seconds=TIMEOUT_THRESHOLD)
+                    if (current_time - last_active)
+                    > timedelta(seconds=TIMEOUT_THRESHOLD)
                 ]
 
                 # Remove inactive users
@@ -247,10 +294,10 @@ def send_file(file_path, client_socket):
             content = file.read()
 
         response = (  # Construct HTTP response with headers and content
-                b"HTTP/1.1 200 OK\r\n"
-                b"Content-Type: text/html\r\n"
-                b"Content-Length: " + str(len(content)).encode() + b"\r\n"
-                                                                   b"\r\n" + content
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/html\r\n"
+            b"Content-Length: " + str(len(content)).encode() + b"\r\n"
+            b"\r\n" + content
         )
         client_socket.sendall(response)
         logging.info("Sent file: %s", file_path)
@@ -349,7 +396,7 @@ def handle_user_request(client_socket, file_path, port):
         )
 
         if (
-                client_id is not None and "/heartbeat" in data
+            client_id is not None and "/heartbeat" in data
         ):  # Handle heartbeat requests (keep-alive signals)
             with users_lock:
                 active_users[port][
@@ -585,7 +632,7 @@ def handle_login_request(client_socket, data):
         password = login_data.get("password")
 
         # Check credentials against USERNAMES dictionary
-        if username in USERNAMES and USERNAMES[username] == password:
+        if username in USERNAMES and USERNAMES[username][0] == password:
             # Generate a session ID
             session_id = str(uuid.uuid4())
             authenticated_sessions[session_id] = {
