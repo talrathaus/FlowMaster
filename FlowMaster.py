@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import logging
 import json
 import uuid
-import sqlite3
+import FlowMasterClasses
 
 # CONFIGURATION CONSTANTS
 MONITOR_SERVER = True
@@ -74,6 +74,8 @@ clients_lock = (
     threading.Lock()
 )  # Lock to protect the connected_clients set during concurrent access
 
+USERNAMES = FlowMasterClasses.Database(FILE_PATHS[5])  # Allowed usernames for logins
+
 # LOGGING CONFIGURATION
 
 logging.basicConfig(  # Set up logging to both file and console for easier debugging
@@ -101,54 +103,6 @@ def test_ports():
                 logging.error("Port %d is not available!", port)
                 return False
     return True
-
-
-def parse_user_db(db_file_path):
-    """
-    Parse a SQLite database file containing user credentials and permissions
-    and return a dictionary in the format {USERNAME: [PASSWORD, PERMISSION]}
-    Args:
-        db_file_path (str): Path to the SQLite database file
-    Returns:
-        dict: Dictionary with username as key and a list of [password, permission] as value
-    """
-    # Initialize the result dictionary
-    user_library = {}
-
-    try:
-        # Connect to the SQLite database
-        conn = sqlite3.connect(db_file_path)
-        cursor = conn.cursor()
-
-        # Query all user records from the UserPassPerm table
-        cursor.execute("SELECT Username, Password, Perm FROM UserPassPerm")
-        rows = cursor.fetchall()
-
-        # Process each row and add to the dictionary
-        for row in rows:
-            username = row[0]
-            password = row[1]
-            permission = row[2]
-
-            # Add to the dictionary with the required format
-            user_library[username] = [password, permission]
-
-        # Close the connection
-        conn.close()
-
-        return user_library
-
-    except sqlite3.Error as e:
-        print(f"SQLite error: {e}")
-        return {}
-    except Exception as e:
-        print(f"Error: {e}")
-        return {}
-
-
-USERNAMES = parse_user_db(FILE_PATHS[5])  # Allowed usernames for logins
-#  Python no like when is before function
-
 
 def signal_handler(*_):
     """
@@ -632,7 +586,7 @@ def handle_login_request(client_socket, data):
         password = login_data.get("password")
 
         # Check credentials against USERNAMES dictionary
-        if username in USERNAMES and USERNAMES[username][0] == password:
+        if username in USERNAMES.user_library and USERNAMES.user_library[username][0] == password:
             # Generate a session ID
             session_id = str(uuid.uuid4())
             authenticated_sessions[session_id] = {
