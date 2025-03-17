@@ -1,10 +1,6 @@
-# Short explanation of everything up until 03/03/2025, please remember to update this Tal...
+# Project Description as of 17/03/2025
 
-Overview: This is a multithreaded server that handles multiple client requests at once. It serves
-HTML files from different ports and directs clients to the right server based on current load. It
-also keeps track of active users and removes inactive ones. Additionally, it introduces a monitoring
-server to track real-time user activity and server load, and implements a delay mechanism for
-routing to ensure balanced load distribution.
+Overview: This is a multithreaded server that handles multiple client requests at once. It serves HTML files from different ports and directs clients to the right server based on current load. It keeps track of active users and removes inactive ones. The system includes a monitoring server to track real-time user activity and server load, implements a delay mechanism for routing to ensure balanced load distribution, and features a secure login system with authentication and session management.
 
 Technical Architecture:
 - Uses TCP sockets for reliable client-server communication
@@ -12,16 +8,20 @@ Technical Architecture:
 - Maintains shared state with thread-safe mechanisms
 - Provides load balancing through a routing server architecture
 - Implements heartbeat mechanism for user activity tracking
-- Introduces a monitoring server for real-time statistics
+- Includes a monitoring server for real-time statistics with authenticated access
 - Implements a delay mechanism in the routing server to ensure even distribution
+- Features a secure login system with username/password authentication and session management
 
 What it does:
 1. Port Check: Ensures all required ports are available before startup.
 2. Static Servers: Serves HTML files from different ports.
 3. Routing Server: A main server (port ROUTING_PORT) that sends clients to the least busy server with a delay mechanism.
-4. Monitoring Server: Provides real-time data about server load and active users.
+4. Monitoring Server: Provides real-time data about server load and active users behind authentication.
 5. User Tracking: Regularly updates the list of active users and removes inactive ones.
-6. Graceful Shutdown: When stopped, it logs active users before exiting.
+6. Authentication: Implements secure login with username/password verification.
+7. Session Management: Tracks authenticated sessions using session IDs and cookies.
+8. User Management: Allows administrators to disconnect users and deny access.
+9. Graceful Shutdown: When stopped, it logs active users before exiting.
 
 Main Components:
 1. Socket (socket module):
@@ -48,6 +48,16 @@ Main Components:
    - Records server activities and errors
    - Provides debugging information
    - Tracks user connections and server state
+
+6. Authentication:
+   - Validates user credentials
+   - Manages session tokens
+   - Provides access control to monitoring dashboard
+
+7. Session Management:
+   - Tracks authenticated sessions
+   - Uses cookies for session persistence
+   - Implements timeouts for security
 
 Why TCP instead of UDP?
 - TCP Benefits:
@@ -115,14 +125,37 @@ send_file():
   * Sends complete response to client
 - Error handling: Handles file not found and server errors
 
-handle_request():
-- Purpose: Central request processing logic
+handle_user_request():
+- Purpose: Processes regular user requests
 - Process:
   * Parses incoming HTTP requests
   * Identifies clients using ID or IP
-  * Handles specialized requests (heartbeat, leave, monitoring stats)
+  * Handles specialized requests (heartbeat, leave)
   * Routes or serves content based on port
 - Thread safety: Uses multiple locks for shared state access
+
+handle_monitor_request():
+- Purpose: Processes monitoring dashboard requests
+- Process:
+  * Verifies authentication
+  * Serves monitoring interface
+  * Manages user sessions
+  * Provides stats and admin functions
+- Security: Redirects unauthenticated users to login
+
+handle_login_request():
+- Purpose: Manages user authentication
+- Process:
+  * Validates credentials against USERNAMES dictionary
+  * Creates session token on successful login
+  * Sets session cookie
+  * Redirects to monitoring dashboard
+- Security: Returns 401 on failed authentication
+
+send_redirect_to_login():
+- Purpose: Redirects unauthenticated users
+- Process: Sends 302 Found response to login page
+- Security: Ensures secured access to monitoring features
 
 start_routing_server():
 - Purpose: Implements main load balancer with delay mechanism
@@ -133,6 +166,14 @@ start_routing_server():
   * Implements routing delay for load balancing
 - Configuration: Uses ROUTING_PORT
 
+monitoring_server():
+- Purpose: Runs the monitoring dashboard
+- Process:
+  * Accepts connections
+  * Manages authentication
+  * Provides monitoring interface and stats
+- Security: Requires login for access
+
 static_server():
 - Purpose: Serves static content
 - Process:
@@ -140,11 +181,6 @@ static_server():
   * Accepts connections
   * Serves associated HTML file
 - Thread safety: Creates new thread per client
-
-start_static_servers():
-- Purpose: Initializes content servers
-- Process: Creates thread for each port/file combination
-- Configuration: Uses PORTS and FILE_PATHS lists
 
 main():
 - Purpose: Application entry point
@@ -159,18 +195,22 @@ Configuration Constants Explained:
 - IP: Server's IP address (automatically detected)
 - PORTS: Available ports for static content (8000, 8001, 8002)
 - ROUTING_PORT: Load balancer port (8080)
-- MONITORING_PORT: Monitoring server port
+- MONITORING_PORT: Monitoring server port (8081)
 - SOCKET_TIMEOUT: Client connection timeout (5 seconds)
 - FILE_PATHS: Locations of HTML files to serve
+- USERNAMES: Dictionary of allowed username/password pairs
 - HEARTBEAT_INTERVAL: User activity check frequency (2.5 seconds)
-- TIMEOUT_THRESHOLD: User inactivity limit (10 seconds)
-- DELAY_BETWEEN_ROUTING: Delay applied before redirecting clients to ensure balanced distribution (0.005 seconds)
+- TIMEOUT_THRESHOLD: User inactivity limit (1800 seconds)
+- DELAY_BETWEEN_ROUTING: Delay applied before redirecting clients to ensure balanced distribution (0.35 seconds)
 
 Shared State Management:
 - active_users: Dictionary tracking user activity per port
+- denied_users: Dictionary tracking users denied access
 - users_lock: Thread lock for active_users access
+- client_sockets: Dictionary tracking active socket connections
 - connected_clients: Set of all client identifiers
 - clients_lock: Thread lock for connected_clients access
+- authenticated_sessions: Dictionary tracking valid login sessions
 
 Logging Configuration:
 - Logs to both file (server.log) and console
