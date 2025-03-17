@@ -50,7 +50,7 @@ Main Components:
    - Tracks user connections and server state
 
 6. Authentication:
-   - Validates user credentials
+   - Validates user credentials from SQLite database
    - Manages session tokens
    - Provides access control to monitoring dashboard
 
@@ -58,6 +58,11 @@ Main Components:
    - Tracks authenticated sessions
    - Uses cookies for session persistence
    - Implements timeouts for security
+
+8. Database Integration:
+   - Uses SQLite for user credential storage
+   - Retrieves username, password, and permission data
+   - Supports the authentication system
 
 Why TCP instead of UDP?
 - TCP Benefits:
@@ -78,6 +83,12 @@ test_ports():
 - Process: Attempts to bind to each required port
 - Error handling: Logs and returns False if any port is unavailable
 - Importance: Prevents startup failures due to port conflicts
+
+parse_user_db():
+- Purpose: Loads user credentials from SQLite database
+- Process: Connects to database and queries UserPassPerm table
+- Output: Returns dictionary with username as key and [password, permission] as value
+- Error handling: Handles SQLite errors and returns empty dictionary on failure
 
 signal_handler():
 - Purpose: Handles system interrupts (Ctrl+C)
@@ -133,6 +144,7 @@ handle_user_request():
   * Handles specialized requests (heartbeat, leave)
   * Routes or serves content based on port
 - Thread safety: Uses multiple locks for shared state access
+- Security: Identifies and blocks denied users
 
 handle_monitor_request():
 - Purpose: Processes monitoring dashboard requests
@@ -142,11 +154,12 @@ handle_monitor_request():
   * Manages user sessions
   * Provides stats and admin functions
 - Security: Redirects unauthenticated users to login
+- Admin features: Supports disconnecting users and adding them to denied_users
 
 handle_login_request():
 - Purpose: Manages user authentication
 - Process:
-  * Validates credentials against USERNAMES dictionary
+  * Validates credentials against USERNAMES dictionary from database
   * Creates session token on successful login
   * Sets session cookie
   * Redirects to monitoring dashboard
@@ -197,8 +210,8 @@ Configuration Constants Explained:
 - ROUTING_PORT: Load balancer port (8080)
 - MONITORING_PORT: Monitoring server port (8081)
 - SOCKET_TIMEOUT: Client connection timeout (5 seconds)
-- FILE_PATHS: Locations of HTML files to serve
-- USERNAMES: Dictionary of allowed username/password pairs
+- FILE_PATHS: Locations of HTML files to serve and database file
+- USERNAMES: Dictionary of allowed username/password pairs loaded from database
 - HEARTBEAT_INTERVAL: User activity check frequency (2.5 seconds)
 - TIMEOUT_THRESHOLD: User inactivity limit (1800 seconds)
 - DELAY_BETWEEN_ROUTING: Delay applied before redirecting clients to ensure balanced distribution (0.35 seconds)
