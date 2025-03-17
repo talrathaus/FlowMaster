@@ -6,15 +6,12 @@ import time
 from datetime import datetime, timedelta
 import logging
 import json
+import uuid
 
 # CONFIGURATION CONSTANTS
 MONITOR_SERVER = True
 SERVICE_USERS = True
-
-# IP = socket.gethostbyname(
-#     socket.gethostname()
-# )  # Get the local machine's IP address automatically
-IP = socket.gethostbyname(socket.gethostname())
+IP = socket.gethostbyname(socket.gethostname())  # Get the local machine's IP address automatically
 
 PORTS = [
     8000,
@@ -34,10 +31,16 @@ FILE_PATHS = [  # Paths to HTML files served by different servers
     "html/index2.html",  # Server on port 8001
     "html/index3.html",  # Server on port 8002
     "html/tracker.html",  # Monitoring dashboard
-    # "html/login.html"
+    "html/login.html",  # Login page
 ]
 
-USERNAMES = {"Tal" : "test",}
+USERNAMES = {
+    "Tal": "Test",  # TO IMPLEMENT GUEST PERMISSIONS
+    "Admin": "Administrator"  # TO IMPLEMENT ADMIN PERMISSIONS
+}  # Allowed usernames for logins
+
+authenticated_sessions = {}
+# Add a dictionary to track authenticated sessions
 
 HEARTBEAT_INTERVAL = (
     2.5  # Time between heartbeat checks to verify client connections (in seconds)
@@ -115,11 +118,11 @@ def signal_handler(*_):
     MONITOR_SERVER = False
     SERVICE_USERS = False
 
-    for _, peername in client_sockets.items():
+    for _, PeerName in client_sockets.items():
         try:
             # Drop the connection so that we can exit gracefully
-            peername.shutdown()
-        except:
+            PeerName.shutdown()
+        finally:
             # We don't care about failed shutdown
             pass
 
@@ -145,8 +148,7 @@ def update_active_users():
                 inactive_users = [
                     client_id
                     for client_id, last_active in active_users[port].items()
-                    if (current_time - last_active)
-                    > timedelta(seconds=TIMEOUT_THRESHOLD)
+                    if (current_time - last_active) > timedelta(seconds=TIMEOUT_THRESHOLD)
                 ]
 
                 # Remove inactive users
@@ -245,10 +247,10 @@ def send_file(file_path, client_socket):
             content = file.read()
 
         response = (  # Construct HTTP response with headers and content
-            b"HTTP/1.1 200 OK\r\n"
-            b"Content-Type: text/html\r\n"
-            b"Content-Length: " + str(len(content)).encode() + b"\r\n"
-            b"\r\n" + content
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/html\r\n"
+                b"Content-Length: " + str(len(content)).encode() + b"\r\n"
+                                                                   b"\r\n" + content
         )
         client_socket.sendall(response)
         logging.info("Sent file: %s", file_path)
@@ -347,7 +349,7 @@ def handle_user_request(client_socket, file_path, port):
         )
 
         if (
-            client_id is not None and "/heartbeat" in data
+                client_id is not None and "/heartbeat" in data
         ):  # Handle heartbeat requests (keep-alive signals)
             with users_lock:
                 active_users[port][
@@ -430,11 +432,66 @@ def handle_monitor_request(client_socket, file_path, port):
             logging.error("Socket already closed on port %d", port)
             return False
 
-        if "/stats" in data:
-            handle_stats_request(client_socket)
+        # Extract request method and path
+        request_line = data.split("\r\n")[0]
+        method, path, _ = request_line.split(" ", 2)
+
+        # Extract client IP for session tracking
+        client_ip = client_socket.getpeername()[0]  # TO IMPLEMENT
+
+        # Check for cookies to identify session
+        session_id = None
+        if "Cookie:" in data:
+            cookie_line = [
+                line for line in data.split("\r\n") if line.startswith("Cookie:")
+            ][0]
+            cookies = cookie_line.split(":", 1)[1].strip()
+            cookie_parts = cookies.split(";")
+            for part in cookie_parts:
+                if "session_id=" in part:
+                    session_id = part.split("=", 1)[1].strip()
+
+        # Check if this is a login request
+        if path == "/login" and method == "POST":
+            return handle_login_request(client_socket, data)
+
+        # Check if user is authenticated or requesting login page
+        is_authenticated = session_id in authenticated_sessions
+
+        # Root path or empty path should serve login if not authenticated
+        if path == "/" or path == "":
+            if is_authenticated:
+                send_file(FILE_PATHS[3], client_socket)  # tracker.html
+            else:
+                send_file(FILE_PATHS[4], client_socket)  # login.html
             return True
 
-        if "/disconnect" in data:  # Handle client leave requests
+        # Explicitly handle tracker.html request
+        if path == "/tracker.html":
+            if is_authenticated:
+                send_file(FILE_PATHS[3], client_socket)  # serve tracker.html
+            else:
+                send_redirect_to_login(client_socket)  # redirect to login
+            return True
+
+        # Explicitly handle login.html request
+        if path == "/login.html":
+            send_file(FILE_PATHS[4], client_socket)  # always serve login page
+            return True
+
+        # Handle stats request (for authenticated users only)
+        if "/stats" in path:
+            if is_authenticated:
+                handle_stats_request(client_socket)
+            else:
+                send_redirect_to_login(client_socket)
+            return True
+
+        if "/disconnect" in path:  # Handle client leave requests
+            if not is_authenticated:
+                send_redirect_to_login(client_socket)
+                return True
+
             # Find the body inside the 'data'
             header_and_body = data.split("\r\n\r\n")
 
@@ -468,6 +525,12 @@ def handle_monitor_request(client_socket, file_path, port):
             )
             return True
 
+        # For other requests, check authentication
+        if not is_authenticated:
+            send_redirect_to_login(client_socket)
+            return True
+
+        # Default: serve the requested file
         send_file(file_path, client_socket)
         return True
 
@@ -481,11 +544,99 @@ def handle_monitor_request(client_socket, file_path, port):
         )  # Handle any other errors
     finally:
         try:  # Always ensure the socket is closed
-            # noinspection PyArgumentList
-            client_socket.close()  # the comment above is to stop pep8 from being mad
+            client_socket.close()
         except Exception as e:
             logging.error("Error closing socket on port %d: %s", port, str(e))
     return False
+
+
+def send_redirect_to_login(client_socket):
+    """Send HTTP redirect to login page
+    Args:
+        client_socket (socket): The client's socket connection.
+    """
+    redirect_response = (
+        f"HTTP/1.1 302 Found\r\n"
+        f"Location: http://{IP}:{MONITORING_PORT}/login.html\r\n"
+        f"\r\n"
+    ).encode()
+
+    client_socket.sendall(redirect_response)
+    logging.info("Redirected unauthenticated user to login page")
+
+
+# We need to modify the handle_login_request function to ensure it returns a response that will trigger the redirect
+
+
+def handle_login_request(client_socket, data):
+    """Handle login POST requests
+    Args:
+        client_socket (socket): The client's socket connection.
+        data (str): The HTTP request data.
+    Returns:
+        bool: True if request was handled successfully.
+    """
+    try:
+        # Extract the request body
+        body = data.split("\r\n\r\n")[1]
+        login_data = json.loads(body)
+
+        username = login_data.get("username")
+        password = login_data.get("password")
+
+        # Check credentials against USERNAMES dictionary
+        if username in USERNAMES and USERNAMES[username] == password:
+            # Generate a session ID
+            session_id = str(uuid.uuid4())
+            authenticated_sessions[session_id] = {
+                "username": username,
+                "timestamp": datetime.now(),
+            }
+
+            # Send success response with session cookie and redirect URL
+            response = {
+                "success": True,
+                "message": "Login successful",
+                "redirect": f"http://{IP}:{MONITORING_PORT}/tracker.html",
+            }
+            response_json = json.dumps(response)
+
+            headers = (
+                f"HTTP/1.1 200 OK\r\n"
+                f"Content-Type: application/json\r\n"
+                f"Set-Cookie: session_id={session_id}; Path=/; HttpOnly\r\n"
+                f"Content-Length: {len(response_json)}\r\n"
+                f"\r\n"
+            )
+
+            client_socket.sendall((headers + response_json).encode())
+            logging.info(f"User {username} logged in successfully")
+        else:
+            # Send failure response
+            response = {"success": False, "message": "Invalid username or password"}
+            response_json = json.dumps(response)
+
+            headers = (
+                f"HTTP/1.1 401 Unauthorized\r\n"
+                f"Content-Type: application/json\r\n"
+                f"Content-Length: {len(response_json)}\r\n"
+                f"\r\n"
+            )
+
+            client_socket.sendall((headers + response_json).encode())
+            logging.info(f"Failed login attempt for user {username}")
+
+        return True
+    except Exception as e:
+        logging.error(f"Error handling login: {str(e)}")
+        error_response = json.dumps({"success": False, "message": "Server error"})
+        client_socket.sendall(
+            f"HTTP/1.1 500 Internal Server Error\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(error_response)}\r\n"
+            f"\r\n{error_response}".encode()
+        )
+        return True
 
 
 def monitoring_server():
@@ -505,12 +656,14 @@ def monitoring_server():
             ) = server_socket.accept()  # Accept incoming connections
 
             client_socket.settimeout(SOCKET_TIMEOUT)
-            client_peername = f"{client_socket.getpeername()}"
-            client_sockets[client_peername] = client_socket
+            Client_PeerName = f"{client_socket.getpeername()}"
+            client_sockets[Client_PeerName] = client_socket
 
             threading.Thread(  # Handle each request in a separate thread
                 target=lambda: handle_monitor_request(
-                    client_socket, FILE_PATHS[3], MONITORING_PORT
+                    client_socket,
+                    FILE_PATHS[4],
+                    MONITORING_PORT,  # Default to login page
                 )
             ).start()
 
