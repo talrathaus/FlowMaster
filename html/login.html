@@ -88,8 +88,8 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Login successful, redirect to stats monitor
-                    window.location.href = '/stats-monitor.html';
+                    // Login successful, redirect to tracker.html
+                    window.location.href = '/tracker.html';
                 } else {
                     // Login failed
                     errorMessageEl.textContent = result.message || 'Login failed. Please try again.';
