@@ -547,6 +547,8 @@ def handle_login_request(client_socket, data):
                 f"\r\n"
             )
 
+            # Set-Cookie: session_id=deleted; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT
+
             client_socket.sendall((headers + response_json).encode())
             logger.log_info(f"User  {username} logged in successfully")
         else:
