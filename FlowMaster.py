@@ -6,34 +6,14 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from flask import Flask, render_template  # Import Flask and render_template
-import FlowMasterClasses
+from flask import Flask  # Import Flask and render_template
 
+import FlowMasterClasses
 
 # CONFIGURATION CONSTANTS
 current_username = None  # Variable to store the current username
 
-# Function to handle user login
-def handle_login(username, password):
-    global current_username  # Use the global variable
-    # Logic to authenticate user
-    current_username = username  # Set the current username upon successful login
-
-
-    ...
-
 app = Flask(__name__)  # Initialize the Flask app
-
-# Function to render the tracker page
-def render_tracker_page():
-    global user_session_manager  # Use the user session manager
-    session_id = None  # Initialize session_id
-    if "session_id" in request.cookies:  # Check for session_id in cookies
-        session_id = request.cookies.get("session_id")  # Get session_id from cookies
-    current_username = user_session_manager.get_username(session_id)  # Retrieve username from session
-
-    # Logic to render the tracker page
-    return render_template('tracker.html', username=current_username)  # Pass the username to the template
 
 
 # Function to handle user logout
@@ -553,7 +533,7 @@ def handle_login_request(client_socket, data):
         bool: True if request was handled successfully.
     """
     global current_username  # Add this line to access the global variable
-    
+
     try:
         # Extract the request body
         body = data.split("\r\n\r\n")[1]
@@ -569,7 +549,7 @@ def handle_login_request(client_socket, data):
         ):
             # Update current_username when login is successful
             current_username = username  # Add this line to update the username
-            
+
             # Generate a session ID
             session_id = user_session_manager.create_session(username)
             response = {
