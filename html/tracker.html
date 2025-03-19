@@ -137,6 +137,9 @@
 <body>
     <!-- Previous HTML structure remains the same -->
     <h1>Multi-Port Activity Monitor</h1>
+    <button id="logoutButton" onclick="logout()">Logout</button>
+    <p>Current User: <span id="currentUser ">{{ username }}</span></p>
+
 
     <div id="serverInfo">
         <p>Monitor running on IP: <span id="serverIp"></span></p>
@@ -555,7 +558,29 @@
             drawStackedAreaGraph('percentageGraph', trafficHistory);
         }
 
+        // Logout function
+        function logout() {
+            fetch('/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'logout' })
+            }).then(response => {
+                if (response.ok) {
+                    // Redirect to login page
+                    window.location.href = '/login.html';
+                } else {
+                    alert('Logout failed. Please try again.');
+                }
+            }).catch(error => {
+                console.error('Error during logout:', error);
+                alert('Logout failed. Please try again.');
+            });
+        }
+
         // Initial fetch
+
         fetchStats();
 
         // Set up regular polling
