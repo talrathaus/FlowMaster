@@ -5,9 +5,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-
 from flask import Flask  # Import Flask and render_template
-
 import FlowMasterClasses
 
 # CONFIGURATION CONSTANTS
@@ -15,20 +13,15 @@ current_username = None  # Variable to store the current username
 
 app = Flask(__name__)  # Initialize the Flask app
 
-
 # Function to handle user logout
 def handle_logout():
     global current_username  # Use the global variable
     current_username = None  # Clear the current username
-    # Logic to delete session cookie
-    ...
-
+    # TO IMPLEMENT LOGIC TO DELETE SESSION COOKIE
 
 MONITOR_SERVER = True  # Flag to control monitoring server status
 SERVICE_USERS = True  # Flag to control user service status
-IP = socket.gethostbyname(
-    socket.gethostname()
-)  # Get the local machine's IP address automatically
+IP = socket.gethostbyname(socket.gethostname())  # Get the local machine's IP address automatically
 
 # Ports for content servers and routing
 PORTS = [8000, 8001, 8002]
@@ -58,13 +51,12 @@ active_users = {
     port: {} for port in PORTS + [MONITORING_PORT]
 }  # Track active users per port
 denied_users = {}  # Track users we want to deny access
-users_lock = (
-    threading.Lock()
-)  # Lock to protect the active_users dictionary during concurrent access
+
+users_lock = threading.Lock()  # Lock to protect the active_users dictionary during concurrent access
+
 client_sockets = {}  # Dictionary to hold client sockets
-connected_clients = (
-    set()
-)  # Set of unique client identifiers that have connected at least once
+connected_clients = set()  # Set of unique client identifiers that have connected at least once
+
 clients_lock = (
     threading.Lock()
 )  # Lock to protect the connected_clients set during concurrent access
@@ -76,6 +68,7 @@ logger = FlowMasterClasses.Logger("../server.log")  # Set up logging
 
 
 def test_ports():
+
     """
     Test if all required ports are available before starting servers.
     Returns:
@@ -92,6 +85,7 @@ def test_ports():
 
 
 def signal_handler(*_):
+
     """
     Handle graceful shutdown on SIGINT (Ctrl+C).
     This ensures that the program exits cleanly when terminated by user.
@@ -114,6 +108,7 @@ def signal_handler(*_):
 
 
 def update_active_users():
+
     """
     Background task to maintain active user counts.
     Periodically checks for and removes inactive users based on
@@ -144,6 +139,7 @@ def update_active_users():
 
 
 def get_server_loads():
+
     """
     Get the current load (number of active users) of each content server.
     Returns:
@@ -154,6 +150,7 @@ def get_server_loads():
 
 
 def get_monitoring_data():
+
     """
     Get comprehensive monitoring data for all servers.
     Formats data for the monitoring dashboard, including total counts
@@ -176,6 +173,7 @@ def get_monitoring_data():
 
 
 def select_target_port():
+
     """
     Select the least loaded port for new connections (load balancing).
     Uses a simple algorithm: choose the server with the fewest active users.
@@ -198,6 +196,7 @@ def select_target_port():
 
 
 def send_redirect(client_socket, port):
+
     """
     Send HTTP redirect response to client.
     Creates and sends a 302 Found HTTP response directing the client
@@ -215,6 +214,7 @@ def send_redirect(client_socket, port):
 
 
 def send_file(file_path, client_socket):
+
     """
     Send file content to client with proper HTTP headers.
     Args:
@@ -251,6 +251,7 @@ def send_file(file_path, client_socket):
 
 
 def handle_stats_request(client_socket):
+
     """
     Handle requests for monitoring statistics.
     Sends JSON-formatted monitoring data to the client.
@@ -273,6 +274,7 @@ def handle_stats_request(client_socket):
 
 
 def handle_user_request(client_socket, file_path, port):
+
     """
     Handle incoming user HTTP requests based on the server type and request path.
     This function decodes the request, identifies the client, updates activity tracking,
@@ -374,6 +376,7 @@ def handle_user_request(client_socket, file_path, port):
 
 
 def handle_monitor_request(client_socket, file_path, port):
+
     """
     Handle incoming monitor HTTP requests based on the server type and request path.
     This function decodes the request, identifies the client, updates activity tracking,
@@ -451,6 +454,7 @@ def handle_monitor_request(client_socket, file_path, port):
                 send_redirect_to_login(client_socket)
             return True
 
+        # TO IMPLEMENT NEED FOR USERNAMES.user_library[username][1] == 1
         if "/disconnect" in path:  # Handle client leave requests
             if not is_authenticated:
                 send_redirect_to_login(client_socket)
@@ -510,6 +514,7 @@ def handle_monitor_request(client_socket, file_path, port):
 
 
 def send_redirect_to_login(client_socket):
+
     """Send HTTP redirect to login page
     Args:
         client_socket (socket): The client's socket connection.
@@ -525,6 +530,7 @@ def send_redirect_to_login(client_socket):
 
 
 def handle_login_request(client_socket, data):
+
     """Handle login POST requests
     Args:
         client_socket (socket): The client's socket connection.
@@ -598,6 +604,7 @@ def handle_login_request(client_socket, data):
 
 
 def monitoring_server():
+
     """
     Start the monitoring server that provides the dashboard and stats API.
     This server runs on its own thread and handles requests for monitoring data.
@@ -623,6 +630,7 @@ def monitoring_server():
 
 
 def start_routing_server():
+
     """
     Start the main routing server (load balancer).
     This is the main entry point for clients and redirects them to the
@@ -654,6 +662,7 @@ def start_routing_server():
 
 
 def static_server(port, file_path):
+
     """
     Start a static content server on a specific port.
     Each static server serves one HTML file and handles client tracking.
@@ -676,6 +685,7 @@ def static_server(port, file_path):
 
 
 def start_static_servers():
+
     """
     Start all static content servers in separate threads.
     Creates one server for each port/file pair defined in PORTS and FILE_PATHS.
@@ -687,6 +697,7 @@ def start_static_servers():
 
 
 def main():
+
     """
     Main entry point for the server application.
     Tests ports, sets up signal handling, starts all servers,
