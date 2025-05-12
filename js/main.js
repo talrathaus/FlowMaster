@@ -64,10 +64,26 @@ async function disconnectUser(userId, port) {
                 userId: userId,
                 port: port,
             }),
+            redirect: "manual" // prevent automatic redirect following
         });
+
+        if (response.status === 302) {
+            // Manually handle redirect by navigating to the Location header
+            const redirectUrl = response.headers.get("Location");
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+                return;
+            }
+        }
 
         if (!response.ok) {
             throw new Error("Failed to disconnect user");
+        }
+
+        let result = await response.json();
+
+        if ('response' in result) {
+            alert(`Failed to disconnect user : ${result.response}`);
         }
 
         // Refresh stats immediately after disconnection
@@ -371,6 +387,27 @@ function updateGraphs() {
 
     // Update percentage distribution graph
     drawStackedAreaGraph("percentageGraph", trafficHistory);
+}
+
+let serverFullState = false; // false means default caps, true means pretend caps (full)
+
+function make_server_full() {
+    fetch("/make_server_full", {
+        method: "POST",
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.state === "full") {
+                serverFullState = true;
+                document.getElementById("toggleFullBtn").textContent = "Return to default caps";
+            } else {
+                serverFullState = false;
+                document.getElementById("toggleFullBtn").textContent = "Make All Servers Appear Full";
+            }
+        })
+        .catch(error => {
+            console.error("Error toggling server caps:", error);
+        });
 }
 
 // Logout function
