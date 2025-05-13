@@ -1,19 +1,3 @@
-# *TO DO LIST:*
-# 1. Use Your JinjaTest Code
-#   1.1. Replace index1-3
-#       1.1.1. Pray
-
-# 2. Make Project portfolio
-#   2.1. Use ProjectDesc.txt
-#       2.1.1 Translate to Hebrew
-#   2.2. Use Chatgpt to add more
-#   2.3. Use Project portfolio example
-#       2.3.1. Copy certain parts
-#   2.4. Add short videos
-#   2.5. Make Presentation
-
-# 3. Pray
-
 import json
 import signal
 import socket
@@ -21,7 +5,6 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from jinja2 import Environment, FileSystemLoader, TemplateNotFound  # TO USE
 import hashlib
 import FlowMasterClasses
 
@@ -55,7 +38,6 @@ DISCONNECT_PORT = 8888  # Port for the disconnect page
 def HandleLogout():
     global CURRENT_USERNAME  # Use the global variable
     CURRENT_USERNAME = None  # Clear the current username
-    # TO IMPLEMENT LOGIC TO DELETE SESSION COOKIE
 
 
 if len(PORTS) != len(SERVER_CAPS):
@@ -118,6 +100,11 @@ USERNAMES = FlowMasterClasses.dtbs(
 PERMISSIONS = FlowMasterClasses.dtbs(
     "PUP.db", ["PermissionNum", "CanView", "CanDisconnect"], "Permissions"
 )  # Allowed permissions
+PERMCANDISCONNECT = [
+    key
+    for key, perm in PERMISSIONS.user_library.items()
+    if len(perm) > 1 and perm[1] == True
+]  # Permissions that allow disconnecting users
 USER_SESSION_MANAGER = FlowMasterClasses.usrson()  # Manage user sessions
 
 
@@ -327,17 +314,30 @@ def SendFile(file_path: str, client_socket):
         content_type = "application/javascript"
 
     try:
-        with open(file_path, "rb") as file:  # Read the file content
-            content = file.read()
+        if not FlowMasterClasses.flmngr.FileExists(file_path):
+            LOGGER.LogWarning(f"File not found: {file_path}")
+            response = (
+                "HTTP/1.1 404 Not Found\r\n"
+                "Content-Type: text/plain\r\n"
+                "\r\nFile not found."
+            ).encode()
+            client_socket.sendall(response)
+            return
+
+        content = FlowMasterClasses.flmngr.ReadFile(file_path)
+        if content is None:
+            raise FileNotFoundError(f"File not found or could not be read: {file_path}")
+
+        content_bytes = content.encode() if isinstance(content, str) else content
 
         response = (
             "HTTP/1.1 200 OK\r\n"
             f"Content-Type: {content_type}\r\n"
-            f"Content-Length: {len(content)}\r\n"
+            f"Content-Length: {len(content_bytes)}\r\n"
             f"\r\n"
         ).encode()
 
-        client_socket.sendall(response + content)
+        client_socket.sendall(response + content_bytes)
         LOGGER.LogInfo(f"Sent file: {file_path}")
 
     except FileNotFoundError:
@@ -539,9 +539,6 @@ def HandleMonitorRequest(client_socket, file_path, port):
             # After the ? it is the query parameters, before is the path
             path, _ = path.split("?")
 
-        # Extract client IP for session tracking
-        client_ip = client_socket.getpeername()[0]  # TO IMPLEMENT
-
         # Check for cookies to identify session
         session_id = None
         if "Cookie:" in data:
@@ -632,7 +629,10 @@ def HandleMonitorRequest(client_socket, file_path, port):
             return True
 
         if "/disconnect" in path:  # Handle client leave requests
-            if not USERNAMES.GetSecondOfArray(Hash(CURRENT_USERNAME)) == 1:
+            if (
+                not USERNAMES.GetSecondOfArray(Hash(CURRENT_USERNAME))
+                in PERMCANDISCONNECT
+            ):
                 msg = json.dumps({"response": "missing permissions"})
                 response = (
                     "HTTP/1.1 403 Forbidden\r\n"
@@ -870,7 +870,7 @@ def StartRoutingServer():
             client_socket, _ = routing_socket.accept()  # Accept incoming connections
             client_socket.settimeout(SOCKET_TIMEOUT)
 
-            current_time = time.time()  # Implement rate limiting for routing requests
+            current_time = time.time()
             time_since_last = current_time - last_routing_time
 
             # If too little time has passed since last routing, add a delay
