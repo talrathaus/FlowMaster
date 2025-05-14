@@ -6,26 +6,30 @@
     <meta charset="UTF-8">
     <title>Server Stats - Port 8001</title>
     <style>
+        body {
+            background-color: #121212;
+            color: #ddd;
+            font-family: Arial, sans-serif;
+        }
         .stats {
             margin-top: 20px;
             padding: 10px;
-            background-color: #f0f0f0;
+            background-color: #1e1e1e;
             border-radius: 5px;
+            color: #ddd;
         }
-
-        /* Add styling for the client ID display */
         .client-id {
-            background-color: #e0e0e0;
+            background-color: #333;
             padding: 8px;
             border-radius: 4px;
             margin-bottom: 15px;
             font-family: monospace;
+            color: #ddd;
         }
     </style>
 </head>
 
 <body>
-    <!-- Add client ID display at the top -->
     <div class="client-id">
         Client ID: <span id="displayClientId">Loading...</span>
     </div>
@@ -47,7 +51,6 @@
         const clientId = Math.random().toString(36).substring(2);
         const port = 8001;
 
-        // Add this line to display the client ID
         document.getElementById('displayClientId').textContent = clientId;
 
         let failedHeartbeatCount = 0;
@@ -57,16 +60,14 @@
             try {
                 const response = await fetch(`${window.location.href}heartbeat?client_id=${clientId}`);
                 if (response.ok) {
-                    failedHeartbeatCount = 0; // Reset on success
+                    failedHeartbeatCount = 0;
 
-                    // Check for redirect header
                     const redirectUrl = response.headers.get('X-Redirect');
                     if (redirectUrl) {
                         window.location.href = redirectUrl;
                         return;
                     }
 
-                    // Update user count from response header
                     const activeCount = response.headers.get('X-Active-Users');
                     if (activeCount) {
                         document.getElementById('activeUsers').textContent = activeCount;
