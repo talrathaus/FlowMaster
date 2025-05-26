@@ -184,21 +184,21 @@ PUP.db [Project Usernames Passwords] is a database file used for securely storin
 22. **`main()`**: The entry point for the server application, initializing all components and servers.
 
 ### JavaScript Functions in `main.js`:
-- **createServerCard(port)**: Creates a card element for displaying statistics for a specific server port, enhancing the user interface.
-- **createUser ListItem(userId, port)**: Generates a list item for a user with a disconnect button, allowing administrators to manage users easily.
-- **fetchCurrentUser ()**: Fetches and displays the current user's information, providing a personalized experience.
-- **disconnectUser (userId, port)**: Handles the disconnection of a user from the server, enabling administrators to manage user sessions effectively.
-- **fetchStats()**: Fetches and updates server statistics, including active user counts, ensuring that the dashboard reflects real-time data.
-- **filterHostIp(data)**: Filters out the host IP from the statistics data, providing a clearer view of user activity.
-- **drawLineGraph(svgId, data, options)**: Draws a line graph for visualizing data trends, enhancing the analytics dashboard.
-- **drawStackedAreaGraph(svgId, data)**: Draws a stacked area graph for visualizing data distributions, providing insights into server performance.
-- **updateGraphs()**: Updates the graphs with the latest data, ensuring that visualizations are current and accurate.
-- **logout()**: Handles user logout functionality, ensuring that sessions are terminated securely.
-- **onPageLoad()**: Initializes the page and fetches initial data, setting up the user interface for interaction.
-- **handleLoginResponse(response)**: Processes the login response and redirects users if successful, enhancing user experience.
-- **setupEventListeners()**: Configures event handlers for UI elements, ensuring that the interface is interactive and responsive.
-- **updateServerCards(stats)**: Updates server card displays with current statistics, providing real-time insights into server performance.
-- **updateUser List(stats)**: Updates the list of connected users, ensuring that administrators have accurate information.
+- **`createServerCard(port)`**: Creates a card element for displaying statistics for a specific server port, enhancing the user interface.
+- **`createUser ListItem(userId, port)`**: Generates a list item for a user with a disconnect button, allowing administrators to manage users easily.
+- **`fetchCurrentUser ()`**: Fetches and displays the current user's information, providing a personalized experience.
+- **`disconnectUser (userId, port)`**: Handles the disconnection of a user from the server, enabling administrators to manage user sessions effectively.
+- **`fetchStats()`**: Fetches and updates server statistics, including active user counts, ensuring that the dashboard reflects real-time data.
+- **`filterHostIp(data)`**: Filters out the host IP from the statistics data, providing a clearer view of user activity.
+- **`drawLineGraph(svgId, data, options)`**: Draws a line graph for visualizing data trends, enhancing the analytics dashboard.
+- **`drawStackedAreaGraph(svgId, data)`**: Draws a stacked area graph for visualizing data distributions, providing insights into server performance.
+- **`updateGraphs()`**: Updates the graphs with the latest data, ensuring that visualizations are current and accurate.
+- **`logout()`**: Handles user logout functionality, ensuring that sessions are terminated securely.
+- **`onPageLoad()`**: Initializes the page and fetches initial data, setting up the user interface for interaction.
+- **`handleLoginResponse(response)`**: Processes the login response and redirects users if successful, enhancing user experience.
+- **`setupEventListeners()`**: Configures event handlers for UI elements, ensuring that the interface is interactive and responsive.
+- **`updateServerCards(stats)`**: Updates server card displays with current statistics, providing real-time insights into server performance.
+- **`updateUser List(stats)`**: Updates the list of connected users, ensuring that administrators have accurate information.
 
 ## Configuration Constants Explained:
 - **IP:** The server's IP address is automatically detected, ensuring that the system can adapt to different network environments.
