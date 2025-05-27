@@ -9,6 +9,7 @@ from datetime import (
     timedelta,
 )  # Import datetime and timedelta for date and time manipulation
 import hashlib  # Import hashlib for hashing data
+import hmac  # Import hmac for keyed-hashing for message authentication
 import FlowMasterClasses  # Import FlowMasterClasses for custom classes and functions
 
 # LOGGER INITIALIZATION
@@ -99,8 +100,9 @@ CLIENTS_LOCK = (
 
 # Initialize the database and user session manager
 USERNAMES = FlowMasterClasses.DataBase(
-    "PUP.db", ["Username", "Password", "Perm"], "UserPassPerm"
+    "PUP.db", ["Username", "Password", "Perm", "Key"], "UserPassPerm"
 )  # Allowed usernames for logins
+print(USERNAMES.user_library)  # Print the user library for debugging
 PERMISSIONS = FlowMasterClasses.DataBase(
     "PUP.db", ["PermissionNum", "CanView", "CanDisconnect"], "Permissions"
 )  # Allowed permissions
@@ -151,17 +153,24 @@ def SignalHandler(*_):
     sys.exit(0)
 
 
-def Hash(string: str) -> str:
+def Hash(Text, Key):
     """
-    Hashes a given string using the MD5 algorithm.
-
-    This function provides a convenient way to generate an MD5 hash for a given string.
-
-        string (str): The input string to be hashed.
-
-        str: The MD5 hash of the input string as a hexadecimal string.
+    Create a keyed MD5 hash using HMAC
+    
+    Args:
+        Text (str): The text to hash
+        Key (str): The secret key
+    
+    Returns:
+        str: Hexadecimal MD5 hash digest
     """
-    return hashlib.md5(string.encode()).hexdigest()
+    # Convert strings to bytes
+    key_bytes = Key.encode('utf-8')
+    text_bytes = Text.encode('utf-8')
+    
+    # Create HMAC MD5 hash
+    hash_obj = hmac.new(key_bytes, text_bytes, hashlib.md5)
+    return hash_obj.hexdigest()
 
 
 def UpdateActiveUsers():
@@ -756,10 +765,13 @@ def HandleMonitorRequest(client_socket, file_path, port):
 
         if "/disconnect" in path:  # Handle client leave requests
             if (
-                not USERNAMES.GetSecondOfArray(
-                    Hash(CURRENT_USERNAME)
-                )  # Check if the user is in the queue
-                in PERMCANDISCONNECT  # Check if the user has permission to disconnect
+            not USERNAMES.GetSecondOfArray(
+                CURRENT_USERNAME,
+                USERNAMES.user_library.get(CURRENT_USERNAME, ["", "", ""])[2]
+                if len(USERNAMES.user_library.get(CURRENT_USERNAME, [])) > 2
+                else ""
+            )  # Check if the user is in the queue
+            in PERMCANDISCONNECT  # Check if the user has permission to disconnect
             ):
                 msg = json.dumps(
                     {"response": "missing permissions"}
@@ -929,20 +941,30 @@ def HandleLoginRequest(client_socket, data):
         # Extract the request body
         body = data.split("\r\n\r\n")[1]
         login_data = json.loads(body)
-
+        
         username = login_data.get("username")
         password = login_data.get(
             "password"
         )  # Extract username and password from the request body
 
-        encrypted_username = Hash(username)
-        encrypted_password = Hash(
-            password
-        )  # Hash the username and password for secure comparison
+        LOGGER.LogInfo(f"Login attempt for user: {username} : {password}")
 
+        user_key = ""
+        if username in USERNAMES.user_library:
+            user_data = USERNAMES.user_library[username]
+            if len(user_data) > 2:
+                user_key = user_data[2]  # Get the user's relative key safely
+                LOGGER.LogInfo(f"User key extracted for {username}: {user_key}")
+
+        encrypted_password = Hash(
+            password, user_key
+        )  # Hash the password with the user's relative key for secure comparison
+
+        LOGGER.LogInfo(f"Encrypted password for user {username}: {encrypted_password} with key {user_key}")
+        
         if (  # Check credentials against USERNAMES dictionary
-            encrypted_username in USERNAMES.user_library
-            and USERNAMES.user_library[encrypted_username][0] == encrypted_password
+            username in USERNAMES.user_library
+            and USERNAMES.user_library[username][0] == encrypted_password
         ):
             CURRENT_USERNAME = (
                 username  # Update current_username when login is successful

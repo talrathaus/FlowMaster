@@ -3,6 +3,31 @@ const UPDATE_INTERVAL = 2500; // 2.5 seconds
 const HISTORY_LENGTH = 120; // Store 5 minutes of data
 let trafficHistory = []; // Array to store traffic history
 
+// Define your encryption key
+const encryptionKey = "your_secret_key"; // Use a secure key management strategy
+
+/**
+ * Encrypts data using AES encryption.
+ * @param {string} data - The data to encrypt.
+ * @param {string} key - The encryption key.
+ * @returns {string} The encrypted data.
+ */
+function encryptData(data, key) {
+    const encryptedData = CryptoJS.AES.encrypt(data, key).toString();
+    return encryptedData;
+}
+
+/**
+ * Decrypts data using AES encryption.
+ * @param {string} encryptedData - The data to decrypt.
+ * @param {string} key - The encryption key.
+ * @returns {string} The decrypted data.
+ */
+function decryptData(encryptedData, key) {
+    const decryptedData = CryptoJS.AES.decrypt(encryptedData, key).toString(CryptoJS.enc.Utf8);
+    return decryptedData;
+}
+
 /**
  * Creates a server card element for a given port.
  *
@@ -52,7 +77,7 @@ function createUserListItem(userId, port) {
  * displayed instead.
  *
  * @async
- * @function fetchCurrentUser
+ * @function fetchCurrentUser 
  * @returns {Promise<void>} Resolves when the user information is fetched and the DOM is updated.
  */
 async function fetchCurrentUser() {
@@ -80,9 +105,9 @@ async function fetchCurrentUser() {
  * Disconnects a user from a specified port by sending a POST request to the server.
  * Handles manual redirection if the server responds with a 302 status code.
  * Logs response details and alerts the user in case of failure.
- * 
+ *
  * @async
- * @function disconnectUser
+ * @function disconnectUser 
  * @param {string} userId - The ID of the user to disconnect.
  * @param {number} port - The port from which the user should be disconnected.
  * @throws {Error} Throws an error if the disconnection fails and no redirection occurs.
@@ -378,7 +403,7 @@ function drawLineGraph(svgId, data, options) {
  *
  * The function assumes the data array is sorted by time and contains at least two points.
  * If the data array is empty or contains fewer than two points, the graph will not be drawn.
- */
+    */
 function drawStackedAreaGraph(svgId, data) {
     const svg = document.getElementById(svgId);
     const width = svg.clientWidth;
@@ -415,6 +440,7 @@ function drawStackedAreaGraph(svgId, data) {
             }" y="${y}" text-anchor="end" alignment-baseline="middle" font-size="12">
                         ${value}%
                     </text>
+
                 `;
     }
 
@@ -599,3 +625,45 @@ function onPageLoad() {
     setInterval(fetchStats, UPDATE_INTERVAL);
 }
 document.addEventListener("DOMContentLoaded", onPageLoad); // Call onPageLoad when the DOM is fully loaded
+
+// Call fetchCurrentUser  when the page loads
+fetchCurrentUser ();
+
+// Set up regular polling for stats
+setInterval(fetchStats, UPDATE_INTERVAL);
+
+// Encrypt user data before sending it to the server
+document.getElementById('loginForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const errorMessageEl = document.getElementById('errorMessage');
+
+    // Encrypt the username and password
+    const encryptedUsername = encryptData(username, encryptionKey);
+    const encryptedPassword = encryptData(password, encryptionKey);
+
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username: encryptedUsername, password: encryptedPassword })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // Login successful, redirect to tracker.html
+            window.location.href = '/tracker.html';
+        } else {
+            // Login failed
+            errorMessageEl.textContent = result.message || 'Login failed. Please try again.';
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        errorMessageEl.textContent = 'An error occurred. Please try again.';
+    }
+});
