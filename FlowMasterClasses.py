@@ -66,13 +66,14 @@ class DataBase:
         except Exception as e:  # Handle other exceptions
             print(f"Error: {e}")
 
-    def GetSecondOfArray(self, username):
+    def GetSecondOfArray(self, username, key=None):
         """
         Retrieves the second element of the array associated with the given username
         in the user_library dictionary.
 
         Args:
             username (str): The username to look up in the user_library.
+            key (optional): An additional key or parameter (not used in current implementation).
 
         Returns:
             object: The second element of the array associated with the username

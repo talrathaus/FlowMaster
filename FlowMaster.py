@@ -766,12 +766,10 @@ def HandleMonitorRequest(client_socket, file_path, port):
         if "/disconnect" in path:  # Handle client leave requests
             if (
             not USERNAMES.GetSecondOfArray(
-                Hash(
-                    CURRENT_USERNAME,
-                    USERNAMES.user_library.get(CURRENT_USERNAME, ["", "", ""])[2]
-                    if len(USERNAMES.user_library.get(CURRENT_USERNAME, [])) > 2
-                    else ""
-                )
+                CURRENT_USERNAME,
+                USERNAMES.user_library.get(CURRENT_USERNAME, ["", "", ""])[2]
+                if len(USERNAMES.user_library.get(CURRENT_USERNAME, [])) > 2
+                else ""
             )  # Check if the user is in the queue
             in PERMCANDISCONNECT  # Check if the user has permission to disconnect
             ):
